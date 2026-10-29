@@ -1,0 +1,28 @@
+node_modules/
+.env
+data/*.json
+uploads/*
+!uploads/.gitkeep
+*.pdf
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+
+# Uploaded files and generated data
+uploads/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/

@@ -1,0 +1,74 @@
+const MODEL = "@cf/black-forest-labs/flux-1-schnell";
+
+export function imageGenerationAvailable() {
+  return Boolean(
+    process.env.CLOUDFLARE_API_TOKEN &&
+    process.env.CLOUDFLARE_ACCOUNT_ID
+  );
+}
+
+export async function generateSketch(attributes = {}, stage = "initial") {
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+
+  if (!token || !accountId) {
+    throw new Error(
+      "Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in backend/.env"
+    );
+  }
+
+  const description = Object.entries(attributes)
+    .filter(([, value]) => value != null && String(value).trim())
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(", ");
+
+  if (!description) {
+    throw new Error("Facial attributes are required.");
+  }
+
+  const prompt =
+    "Create a fictional monochrome pencil-style facial composite illustration. " +
+    "Front-facing head, neutral expression, plain white background, " +
+    "clear facial features, hand-drawn graphite lines. " +
+    "Use these visual attributes: " + description +
+    ". Stage: " + String(stage) +
+    ". This is a fictional illustration, not an identification of a real person.";
+
+  const url =
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}` +
+    `/ai/run/${MODEL}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      prompt,
+      steps: 4
+    })
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.success) {
+    const details = (data.errors || [])
+      .map(error => error.message)
+      .join("; ");
+
+    console.error("Cloudflare image API failed:", response.status, details);
+
+    throw new Error(
+      details || `Cloudflare image API returned HTTP ${response.status}`
+    );
+  }
+
+  const image = data.result?.image;
+
+  if (!image) {
+    throw new Error("Cloudflare returned no image.");
+  }
+
+  return image;
+}

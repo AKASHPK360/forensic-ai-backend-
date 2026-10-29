@@ -1,0 +1,28 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const dataDir = path.resolve(here, "../data");
+const dbFile = path.join(dataDir, "cases.json");
+
+async function ensureStore() {
+  await fs.mkdir(dataDir, { recursive: true });
+  try { await fs.access(dbFile); }
+  catch { await fs.writeFile(dbFile, "[]\n", "utf8"); }
+}
+export async function listCases() {
+  await ensureStore();
+  return JSON.parse(await fs.readFile(dbFile, "utf8"));
+}
+export async function getCase(id) {
+  return (await listCases()).find(c => c.caseId === id) ?? null;
+}
+export async function saveCase(record) {
+  const cases = await listCases();
+  const index = cases.findIndex(c => c.caseId === record.caseId);
+  if (index >= 0) cases[index] = { ...cases[index], ...record, updatedAt: new Date().toISOString() };
+  else cases.unshift({ ...record, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  await fs.writeFile(dbFile, JSON.stringify(cases, null, 2), "utf8");
+  return cases.find(c => c.caseId === record.caseId);
+}

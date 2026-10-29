@@ -1,0 +1,54 @@
+import PDFDocument from "pdfkit";
+
+export function createPdfReport(record, res) {
+  const doc = new PDFDocument({ margin: 52, size: "A4", info: { Title: "Forensic AI Case Review Report" } });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeFilename(record.caseId || "forensic-case")}-report.pdf"`);
+  doc.pipe(res);
+  doc.fontSize(20).text("Forensic AI — Case Review Report");
+  doc.moveDown(0.4).fontSize(10).fillColor("#9a5b12").text("PROTOTYPE OUTPUT — NOT EVIDENCE OR IDENTITY DETERMINATION");
+  doc.fillColor("#111827").moveDown();
+  doc.fontSize(12).text(`Case ID: ${record.caseId || "Not provided"}`);
+  doc.text(`Generated: ${new Date().toISOString()}`);
+  doc.text(`Review status: ${record.reviewStatus || "Pending witness review"}`);
+
+  // Include the generated sketch when valid image data is supplied.
+  if (typeof record.generatedSketch === "string" &&
+      /^data:image\/(png|jpeg|jpg);base64,/i.test(record.generatedSketch)) {
+    try {
+      const imageData = Buffer.from(record.generatedSketch.split(",")[1], "base64");
+      doc.moveDown().fontSize(14).fillColor("#111827").text("Generated sketch");
+      doc.moveDown(0.5);
+      doc.image(imageData, {
+        fit: [480, 340],
+        align: "center",
+        valign: "center"
+      });
+      doc.moveDown();
+    } catch (error) {
+      console.error("Could not embed generated sketch:", error.message);
+      doc.moveDown().fontSize(10).text("Generated sketch could not be embedded.");
+    }
+  } else {
+    doc.moveDown().fontSize(10).text("Generated sketch: Not supplied.");
+  }
+  doc.fillColor("#111827");
+  doc.moveDown().fontSize(14).text("Witness statement");
+  doc.fontSize(10).text(record.description || "Not provided", { lineGap: 3 });
+  doc.moveDown().fontSize(14).text("Facial attributes");
+  const attrs = record.attributes && typeof record.attributes === "object" ? record.attributes : {};
+  for (const [key, value] of Object.entries(attrs)) {
+    doc.fontSize(10).text(`${label(key)}: ${String(value).slice(0, 500)}`);
+  }
+  doc.moveDown().fontSize(14).text("Stage review");
+  const stages = Array.isArray(record.stages) ? record.stages : [];
+  if (!stages.length) doc.fontSize(10).text("No stage review data supplied.");
+  for (const stage of stages) doc.fontSize(10).text(`${stage.stage || "Stage"} — ${stage.accepted ? "Accepted" : "Not accepted"}`);
+  doc.moveDown().fontSize(14).text("Reviewer note");
+  doc.fontSize(10).text(record.reviewNote || "No reviewer note supplied.", { lineGap: 3 });
+  doc.moveDown(1.5).fontSize(9).fillColor("#6b7280")
+    .text("This report is generated from a prototype workflow. A qualified human must verify all details. Do not use generated output alone to identify a person or as forensic evidence.");
+  doc.end();
+}
+function label(s) { return String(s).replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase()); }
+function safeFilename(s) { return String(s).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "forensic-case"; }

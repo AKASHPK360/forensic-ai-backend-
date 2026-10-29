@@ -1,0 +1,94 @@
+import OpenAI from "openai";
+
+const client = process.env.GROQ_API_KEY
+  ? new OpenAI({
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1"
+    })
+  : null;
+
+export function aiAvailable() { return Boolean(client); }
+
+export async function transcribeAudio(filePath) {
+  if (!client) {
+    const error = new Error("Speech transcription is not configured. Add GROQ_API_KEY to backend .env.");
+    error.status = 503;
+    throw error;
+  }
+  const result = await client.audio.transcriptions.create({
+    file: await import("node:fs").then(fs => fs.createReadStream(filePath)),
+    model: process.env.GROQ_TRANSCRIPTION_MODEL || "whisper-large-v3",
+    response_format: "json"
+  });
+  return { text: result.text || "", provider: "Groq Whisper" };
+}
+
+const schema = {
+  type: "object",
+  properties: {
+    face_shape: { type: "string" },
+    jawline: { type: "string" },
+    eyes: { type: "string" },
+    eyebrows: { type: "string" },
+    nose: { type: "string" },
+    mouth: { type: "string" },
+    hair: { type: "string" },
+    facial_hair: { type: "string" },
+    uncertainty_notes: { type: "array", items: { type: "string" } }
+  },
+  required: ["face_shape", "jawline", "eyes", "eyebrows", "nose", "mouth", "hair", "facial_hair", "uncertainty_notes"],
+  additionalProperties: false
+};
+
+export async function extractAttributes(statement) {
+  if (!client) {
+    return {
+      provider: "local-rule-fallback",
+      simulated: true,
+      attributes: ruleExtract(statement)
+    };
+  }
+  const completion = await client.chat.completions.create({
+    model: process.env.GROQ_CHAT_MODEL || "llama-3.3-70b-versatile",
+    temperature: 0,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: `Extract only facial details explicitly stated by the witness. Never infer missing traits. Use "Not confirmed" for absent or unclear attributes. Return JSON with keys face_shape, jawline, eyes, eyebrows, nose, mouth, hair, facial_hair, uncertainty_notes. uncertainty_notes must be an array of strings. This is a transcription aid, not identity verification.`
+      },
+      { role: "user", content: statement }
+    ]
+  });
+  let parsed;
+  try { parsed = JSON.parse(completion.choices[0]?.message?.content || "{}"); }
+  catch {
+    const error = new Error("The language model returned invalid JSON.");
+    error.status = 502;
+    throw error;
+  }
+  const keys = ["face_shape","jawline","eyes","eyebrows","nose","mouth","hair","facial_hair"];
+  const attributes = Object.fromEntries(keys.map(k => [k, safeString(parsed[k]) || "Not confirmed"]));
+  attributes.uncertainty_notes = Array.isArray(parsed.uncertainty_notes)
+    ? parsed.uncertainty_notes.filter(x => typeof x === "string").slice(0, 20)
+    : [];
+  return { provider: "Groq Llama", simulated: false, attributes };
+}
+
+function safeString(v) { return typeof v === "string" ? v.trim().slice(0, 300) : ""; }
+
+function ruleExtract(statement) {
+  const t = statement.toLowerCase();
+  const find = (patterns, value, fallback = "Not confirmed") => patterns.some(p => t.includes(p)) ? value : fallback;
+  return {
+    face_shape: find(["oval face","oval-shaped face"],"Oval",find(["round face"],"Round",find(["square face"],"Square"))),
+    jawline: find(["narrow jaw","narrow jawline"],"Narrow",find(["broad jaw","wide jaw"],"Broad")),
+    eyes: find(["almond eyes","almond-shaped eyes"],"Almond-shaped",find(["small eyes"],"Small")),
+    eyebrows: find(["thick eyebrows","thick brows"],"Thick",find(["thin eyebrows","thin brows"],"Thin")),
+    nose: find(["broad nose","wide nose"],"Broad",find(["small nose"],"Small")),
+    mouth: find(["thin lips"],"Thin lips",find(["full lips"],"Full lips")),
+    hair: find(["long hair"],"Long",find(["short hair","short dark hair"],"Short")),
+    facial_hair: find(["beard"],"Beard mentioned",find(["moustache","mustache"],"Moustache mentioned")),
+    uncertainty_notes: ["Fallback keyword extraction is active; results are not model-generated."]
+  };
+}

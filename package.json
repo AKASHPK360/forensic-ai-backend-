@@ -1,0 +1,28 @@
+{
+  "name": "forensic-ai-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "worker": "node src/worker.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.31.0",
+    "@huggingface/inference": "^4.13.32",
+    "bullmq": "^6.5.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "ioredis": "^6.0.0",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.77.0",
+    "pdfkit": "^0.16.0",
+    "pg": "^8.23.1",
+    "zod": "^3.24.1"
+  },
+  "scripts:worker": "node src/worker.js"
+}
